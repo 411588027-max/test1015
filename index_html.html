@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎤 聲控成語解謎大師</title>
+    <!-- 引入 Tailwind CSS 進行快速樣式設計 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 FontAwesome 圖示 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- 引入圓潤可愛的字體適合學童 -->
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap" rel="stylesheet">
+    <!-- 引入 Canvas Confetti 用於過關慶祝特效 -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        .game-container {
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        /* 麥克風錄音時的脈衝動畫 */
+        .pulse-mic {
+            animation: pulse-red 1.5s infinite;
+            background-color: #ef4444 !important; /* Tailwind red-500 */
+            color: white !important;
+            transform: scale(1.1);
+        }
+
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        /* 成語字塊的基礎樣式 */
+        .char-box {
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            font-weight: 800;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        /* 缺漏字的樣式 */
+        .char-missing {
+            background-color: #f3f4f6;
+            color: transparent; /* 隱藏文字 */
+            border: 4px dashed #9ca3af;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);
+        }
+
+        /* 答對後缺漏字發光補齊的動畫 */
+        .char-revealed {
+            background-color: #fbbf24; /* Tailwind yellow-400 */
+            color: #b45309; /* Tailwind amber-700 */
+            border: 4px solid #f59e0b;
+            text-shadow: 0 0 10px rgba(255,255,255,0.8);
+            transform: scale(1.1) rotate(5deg);
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.6);
+        }
+
+        .feedback-text {
+            min-height: 2rem;
+            transition: opacity 0.3s ease;
+        }
+
+        @media (max-width: 640px) {
+            .char-box { width: 60px; height: 60px; font-size: 2rem; border-width: 3px; }
+        }
+    </style>
+</head>
+<body class="py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center text-gray-800">
+
+    <div class="max-w-3xl w-full game-container rounded-3xl p-6 sm:p-10 relative">
+        
+        <!-- 標題與進度區 -->
+        <div class="text-center mb-8 relative">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-blue-600 mb-2 drop-shadow-sm">
+                <i class="fa-solid fa-microphone-lines mr-2"></i>聲控成語解謎大師
+            </h1>
+            <p class="text-gray-500 font-bold">請對著麥克風唸出完整的成語，填補空缺的字吧！</p>
+            
+            <div class="absolute top-0 right-0 bg-blue-100 text-blue-800 px-4 py-2 rounded-full font-bold shadow-sm">
+                關卡: <span id="level-display">1</span> / <span id="total-levels">5</span>
+            </div>
+        </div>
+
+        <!-- 不支援語音辨識的警告區 -->
+        <div id="unsupported-msg" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded-md" role="alert">
+            <p class="font-bold">⚠️ 瀏覽器不支援</p>
+            <p>您的瀏覽器似乎不支援語音辨識功能。請嘗試使用最新版的 Google Chrome 或 Microsoft Edge 來進行遊戲。</p>
+        </div>
+
+        <!-- 遊戲主要互動區 -->
+        <div class="flex flex-col items-center bg-white rounded-2xl p-6 sm:p-10 shadow-inner border-2 border-blue-50">
+            
+            <!-- 成語顯示區 -->
+            <div id="idiom-display" class="flex space-x-2 sm:space-x-4 mb-8">
+                <!-- 字塊會由 JS 動態生成 -->
+            </div>
+
+            <!-- 控制按鈕區 -->
+            <div class="flex space-x-6 items-center mb-6">
+                <!-- 聽示範按鈕 -->
+                <button id="btn-demo" class="w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 hover:bg-indigo-200 hover:scale-105 transition-all shadow-md flex items-center justify-center text-2xl outline-none focus:ring-4 focus:ring-indigo-300" title="聽標準示範">
+                    <i class="fa-solid fa-volume-high"></i>
+                </button>
+
+                <!-- 錄音按鈕 (主核心) -->
+                <button id="btn-mic" class="w-24 h-24 rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-all shadow-lg flex flex-col items-center justify-center outline-none focus:ring-4 focus:ring-blue-300 relative" title="點擊開始說話">
+                    <i id="mic-icon" class="fa-solid fa-microphone text-4xl mb-1"></i>
+                    <span id="mic-text" class="text-xs font-bold">點擊朗讀</span>
+                </button>
+            </div>
+
+            <!-- 語音辨識回饋文字 -->
+            <div class="text-center w-full">
+                <p id="speech-feedback" class="feedback-text text-lg font-bold text-gray-500 bg-gray-50 rounded-lg py-2 px-4 inline-block shadow-inner border border-gray-100 w-full sm:w-3/4">
+                    準備好就按下麥克風吧！
+                </p>
+            </div>
+        </div>
+
+        <!-- 釋義與提示區 (過關後顯示) -->
+        <div id="meaning-card" class="mt-6 bg-yellow-50 border-2 border-yellow-200 rounded-xl p-5 hidden opacity-0 transition-opacity duration-500">
+            <h3 class="text-xl font-bold text-yellow-800 mb-2"><i class="fa-solid fa-book-open mr-2"></i>成語小辭典</h3>
+            <p id="idiom-meaning" class="text-gray-700 text-lg leading-relaxed"></p>
+            
+            <div class="mt-4 flex justify-end">
+                <button id="btn-next" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-full shadow-md transition-transform hover:scale-105">
+                    下一關 <i class="fa-solid fa-arrow-right ml-1"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 遊戲結束結算畫面 -->
+        <div id="game-over-screen" class="hidden absolute inset-0 bg-white bg-opacity-95 rounded-3xl flex-col items-center justify-center z-10 p-8 text-center backdrop-blur-sm">
+            <div class="text-6xl mb-4">🏆</div>
+            <h2 class="text-4xl font-extrabold text-green-600 mb-4">太棒了！過關斬將！</h2>
+            <p class="text-xl text-gray-700 font-bold mb-8">你已經成為聲控成語解謎大師囉！</p>
+            <button id="btn-restart" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xl py-3 px-8 rounded-full shadow-lg transition-transform hover:scale-105">
+                <i class="fa-solid fa-rotate-right mr-2"></i>再玩一次
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // --- 國小中高年級精選成語題庫 ---
+        // full: 完整成語
+        // missingIdx: 挖空缺漏的字(Index 0-3)
+        // meaning: 釋義說明
+        const idiomDatabase = [
+            { full: "守株待兔", missingIdx: 3, meaning: "比喻拘泥守成，不知變通，或妄想不勞而獲。" },
+            { full: "畫蛇添足", missingIdx: 3, meaning: "比喻多此一舉，不僅無益，反而有害。" },
+            { full: "井底之蛙", missingIdx: 3, meaning: "比喻見識淺薄的人。" },
+            { full: "半途而廢", missingIdx: 3, meaning: "比喻做事情有始無終，沒有完成就停止了。" },
+            { full: "拔苗助長", missingIdx: 0, meaning: "比喻為了急於求成，反而把事情弄糟。" },
+            { full: "對牛彈琴", missingIdx: 2, meaning: "比喻對不懂道理的人講道理，或講話不看對象。" },
+            { full: "掩耳盜鈴", missingIdx: 2, meaning: "比喻自欺欺人。" },
+            { full: "亡羊補牢", missingIdx: 2, meaning: "比喻犯錯後及時更正，尚能補救。" },
+            { full: "杯弓蛇影", missingIdx: 0, meaning: "比喻為不存在的事情枉自驚疑恐懼。" },
+            { full: "狐假虎威", missingIdx: 1, meaning: "比喻藉著有權勢者的威嚴來恐嚇、欺壓別人。" }
+        ];
+
+        // 遊戲狀態變數
+        let currentLevel = 0;
+        let gameIdioms = [];
+        const LEVELS_PER_GAME = 5; // 每次遊玩選5題
+        let isListening = false;
+        let isLevelComplete = false;
+
+        // UI 元素綁定
+        const levelDisplay = document.getElementById('level-display');
+        const totalLevelsDisplay = document.getElementById('total-levels');
+        const idiomDisplay = document.getElementById('idiom-display');
+        const btnMic = document.getElementById('btn-mic');
+        const micIcon = document.getElementById('mic-icon');
+        const micText = document.getElementById('mic-text');
+        const btnDemo = document.getElementById('btn-demo');
+        const speechFeedback = document.getElementById('speech-feedback');
+        const meaningCard = document.getElementById('meaning-card');
+        const idiomMeaningText = document.getElementById('idiom-meaning');
+        const btnNext = document.getElementById('btn-next');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const btnRestart = document.getElementById('btn-restart');
+        const unsupportedMsg = document.getElementById('unsupported-msg');
+
+        // --- 初始化語音辨識 (SpeechRecognition) ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        let synth = window.speechSynthesis;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;    // 每次辨識一句話就結束
+            recognition.interimResults = false; // 只取最終確定的結果
+            recognition.lang = 'zh-TW';        // 設定為繁體中文(台灣)
+
+            // 當辨識到語音結果時
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript.replace(/\s+/g, ''); // 移除可能的空白
+                console.log("語音辨識結果:", transcript);
+                handleSpeechResult(transcript);
+            };
+
+            // 當發生錯誤時
+            recognition.onerror = (event) => {
+                console.error("語音辨識錯誤:", event.error);
+                stopListening();
+                if(event.error === 'no-speech') {
+                    setFeedback("沒有聽到聲音喔，請再試一次！", "text-orange-500");
+                } else if(event.error === 'not-allowed') {
+                    setFeedback("請允許麥克風權限才能遊玩喔！", "text-red-500");
+                } else {
+                    setFeedback("麥克風出現問題，請重試。", "text-red-500");
+                }
+            };
+
+            // 當辨識結束時
+            recognition.onend = () => {
+                stopListening();
+            };
+
+        } else {
+            // 不支援處理
+            unsupportedMsg.classList.remove('hidden');
+            btnMic.disabled = true;
+            btnMic.classList.add('opacity-50', 'cursor-not-allowed');
+            setFeedback("瀏覽器不支援語音功能", "text-red-500");
+        }
+
+        // --- 遊戲邏輯與UI更新 ---
+
+        // 隨機洗牌陣列的輔助函式 (Fisher-Yates)
+        function shuffle(array) {
+            let currentIndex = array.length, randomIndex;
+            while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        }
+
+        // 開始新遊戲
+        function initGame() {
+            // 隨機挑選指定數量的題目
+            const shuffled = shuffle([...idiomDatabase]);
+            gameIdioms = shuffled.slice(0, LEVELS_PER_GAME);
+            currentLevel = 0;
+            totalLevelsDisplay.innerText = LEVELS_PER_GAME;
+            gameOverScreen.classList.add('hidden');
+            loadLevel();
+        }
+
+        // 載入關卡
+        function loadLevel() {
+            if (currentLevel >= gameIdioms.length) {
+                showGameOver();
+                return;
+            }
+
+            const currentIdiom = gameIdioms[currentLevel];
+            isLevelComplete = false;
+            levelDisplay.innerText = currentLevel + 1;
+            
+            // 重置UI
+            meaningCard.classList.add('hidden', 'opacity-0');
+            meaningCard.classList.remove('block');
+            setFeedback("準備好就按下麥克風朗讀整句成語吧！", "text-gray-500");
+            btnMic.disabled = false;
+            btnMic.classList.remove('opacity-50', 'cursor-not-allowed');
+
+            // 渲染成語字塊
+            renderIdiomBlocks(currentIdiom);
+        }
+
+        // 繪製成語字塊UI
+        function renderIdiomBlocks(idiomObj) {
+            idiomDisplay.innerHTML = '';
+            const chars = idiomObj.full.split('');
+            
+            chars.forEach((char, index) => {
+                const span = document.createElement('span');
+                if (index === idiomObj.missingIdx) {
+                    span.id = 'missing-char';
+                    span.className = 'char-box char-missing bg-gray-100 text-transparent';
+                    span.innerText = char; // 內容其實在，只是被CSS隱藏(color:transparent)
+                } else {
+                    span.className = 'char-box bg-white text-blue-900 border border-gray-200';
+                    span.innerText = char;
+                }
+                idiomDisplay.appendChild(span);
+            });
+        }
+
+        // 處理麥克風按鈕點擊
+        function toggleMicrophone() {
+            if(isLevelComplete) return; // 過關後不給按
+
+            if (isListening) {
+                recognition.stop();
+            } else {
+                try {
+                    recognition.start();
+                    startListeningUI();
+                } catch(e) {
+                    // 防呆：若已經啟動中又呼叫start()的錯誤
+                    console.error(e);
+                }
+            }
+        }
+
+        // UI: 開始傾聽狀態
+        function startListeningUI() {
+            isListening = true;
+            btnMic.classList.add('pulse-mic');
+            micIcon.classList.remove('fa-microphone');
+            micIcon.classList.add('fa-microphone-lines', 'fa-beat-fade');
+            micText.innerText = '聆聽中...';
+            setFeedback("請說話...", "text-blue-500");
+        }
+
+        // UI: 停止傾聽狀態
+        function stopListening() {
+            isListening = false;
+            btnMic.classList.remove('pulse-mic');
+            micIcon.classList.remove('fa-microphone-lines', 'fa-beat-fade');
+            micIcon.classList.add('fa-microphone');
+            micText.innerText = '點擊朗讀';
+        }
+
+        // 設定回饋文字
+        function setFeedback(msg, colorClass) {
+            speechFeedback.innerText = msg;
+            // 移除舊的顏色class
+            speechFeedback.className = `feedback-text text-lg font-bold rounded-lg py-2 px-4 inline-block shadow-inner border border-gray-100 w-full sm:w-3/4 ${colorClass} bg-white`;
+        }
+
+        // 處理辨識結果並判斷是否正確
+        function handleSpeechResult(transcript) {
+            const currentIdiom = gameIdioms[currentLevel];
+            const targetWord = currentIdiom.full;
+            const targetChar = targetWord.charAt(currentIdiom.missingIdx);
+
+            // 顯示聽到的內容給學童看
+            setFeedback(`聽到的是：「${transcript}」`, "text-gray-700");
+
+            // 判斷邏輯：如果唸出來的句子完全包含這個成語 (忽略標點)，就算對
+            // 為了對小朋友寬容一點，如果只辨識出該缺漏字也算過關 (但鼓勵唸全句)
+            if (transcript.includes(targetWord) || transcript.includes(targetChar)) {
+                // 成功過關
+                levelSuccess();
+            } else {
+                // 失敗提示
+                setTimeout(() => {
+                    if(!isLevelComplete) {
+                        setFeedback("好像不太對喔，再試一次！可以聽聽看示範。", "text-orange-500");
+                    }
+                }, 1500);
+            }
+        }
+
+        // 過關處理
+        function levelSuccess() {
+            isLevelComplete = true;
+            btnMic.disabled = true;
+            btnMic.classList.add('opacity-50', 'cursor-not-allowed');
+            setFeedback("🎉 太棒了！答對了！", "text-green-600");
+
+            // 觸發缺字發光填補特效
+            const missingCharEl = document.getElementById('missing-char');
+            if (missingCharEl) {
+                // 先移除missing class，加入revealed class
+                missingCharEl.classList.remove('char-missing', 'text-transparent', 'bg-gray-100', 'border-dashed');
+                missingCharEl.classList.add('char-revealed');
+            }
+
+            // 噴發彩帶特效
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444']
+            });
+
+            // 顯示成語釋義
+            showMeaningCard();
+        }
+
+        // 顯示成語釋義卡片
+        function showMeaningCard() {
+            const currentIdiom = gameIdioms[currentLevel];
+            idiomMeaningText.innerText = currentIdiom.meaning;
+            
+            meaningCard.classList.remove('hidden');
+            // 使用 timeout 讓 display block 先作用，再改變 opacity 以產生淡入效果
+            setTimeout(() => {
+                meaningCard.classList.remove('opacity-0');
+            }, 50);
+        }
+
+        // 播放標準語音示範 (TTS)
+        function playDemo() {
+            // 如果瀏覽器正在唸其他東西，先停止
+            synth.cancel();
+
+            const currentIdiom = gameIdioms[currentLevel];
+            // 讓系統朗讀完整的成語
+            const utterance = new SpeechSynthesisUtterance(currentIdiom.full);
+            utterance.lang = 'zh-TW';
+            utterance.rate = 0.75; // 刻意放慢一點點，讓學童聽清楚
+            utterance.pitch = 1.2; // 稍微提高音調比較有活力
+            
+            synth.speak(utterance);
+        }
+
+        // 進入下一關
+        function nextLevel() {
+            synth.cancel(); // 停止可能的發音
+            currentLevel++;
+            loadLevel();
+        }
+
+        // 遊戲結束畫面
+        function showGameOver() {
+            gameOverScreen.classList.remove('hidden');
+            gameOverScreen.classList.add('flex');
+            // 大量彩帶
+            var duration = 3 * 1000;
+            var animationEnd = Date.now() + duration;
+            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
+
+            var interval = setInterval(function() {
+                var timeLeft = animationEnd - Date.now();
+                if (timeLeft <= 0) {
+                    return clearInterval(interval);
+                }
+                var particleCount = 50 * (timeLeft / duration);
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+            }, 250);
+        }
+
+        function randomInRange(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        // 綁定事件監聽
+        btnMic.addEventListener('click', toggleMicrophone);
+        btnDemo.addEventListener('click', playDemo);
+        btnNext.addEventListener('click', nextLevel);
+        btnRestart.addEventListener('click', initGame);
+
+        // 初始化開始
+        window.onload = () => {
+            initGame();
+        };
+
+    </script>
+</body>
+</html>
